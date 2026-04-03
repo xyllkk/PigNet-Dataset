@@ -1,0 +1,9 @@
+numpy
+pandas
+scikit-learn
+torch
+openpyxl
+xlsxwriter
+xgboost
+lightgbm
+catboost
