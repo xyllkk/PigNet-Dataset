@@ -282,6 +282,116 @@ def make_pig_folds(
     return assignments
 
 
+def validate_fold_assignments(
+    assignments: Sequence[FoldAssignment],
+    pig_ids: Iterable[str],
+    n_splits: int | None = None,
+) -> None:
+    """Validate complete, disjoint, one-time outer validation coverage."""
+    expected = set(map(str, pig_ids))
+    if n_splits is not None and len(assignments) != int(n_splits):
+        raise ValueError(
+            f"Expected {n_splits} folds, but the manifest contains {len(assignments)}."
+        )
+
+    validation_counts = {pig_id: 0 for pig_id in expected}
+    for assignment in assignments:
+        train = set(assignment.train_pigs)
+        validation = set(assignment.validation_pigs)
+        if train & validation:
+            overlap = sorted(train & validation)
+            raise ValueError(
+                f"Fold {assignment.fold} contains train/validation overlap: {overlap}"
+            )
+        if train | validation != expected:
+            missing = sorted(expected.difference(train | validation))
+            extra = sorted((train | validation).difference(expected))
+            raise ValueError(
+                f"Fold {assignment.fold} does not cover the canonical pig set; "
+                f"missing={missing}, extra={extra}."
+            )
+        for pig_id in validation:
+            validation_counts[pig_id] += 1
+
+    invalid = {pig_id: count for pig_id, count in validation_counts.items() if count != 1}
+    if invalid:
+        raise ValueError(
+            "Every pig must occur in the outer validation set exactly once; "
+            f"invalid counts={invalid}."
+        )
+
+
+def load_fold_manifest(path: str | Path) -> tuple[int, list[FoldAssignment]]:
+    """Load a previously generated canonical fold manifest."""
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    assignments = [
+        FoldAssignment(
+            fold=int(item["fold"]),
+            train_pigs=tuple(map(str, item["train_pigs"])),
+            validation_pigs=tuple(map(str, item["validation_pigs"])),
+        )
+        for item in payload["folds"]
+    ]
+    return int(payload["seed"]), assignments
+
+
+def load_or_create_fold_manifest(
+    samples: Sequence[WindowSample],
+    path: str | Path,
+    n_splits: int = 10,
+    seed: int = SEED,
+) -> list[FoldAssignment]:
+    """Create once and subsequently reuse the exact same outer fold assignment."""
+    path = Path(path)
+    pig_ids = sorted({sample.pig_id for sample in samples})
+    if path.exists():
+        stored_seed, assignments = load_fold_manifest(path)
+        if stored_seed != int(seed):
+            raise ValueError(
+                f"Fold manifest seed={stored_seed} does not match requested seed={seed}."
+            )
+        validate_fold_assignments(assignments, pig_ids, n_splits=min(n_splits, len(pig_ids)))
+        return assignments
+
+    assignments = make_pig_folds(samples, n_splits=n_splits, seed=seed)
+    validate_fold_assignments(assignments, pig_ids, n_splits=len(assignments))
+    save_fold_manifest(path, assignments, seed=seed)
+    return assignments
+
+
+def make_inner_folds(
+    outer_training_samples: Sequence[WindowSample],
+    outer_fold: int,
+    n_splits: int = 5,
+    seed: int = SEED,
+) -> list[FoldAssignment]:
+    """Create deterministic inner folds using only the current outer-training pigs."""
+    inner_seed = int(seed) + int(outer_fold)
+    assignments = make_pig_folds(
+        outer_training_samples, n_splits=n_splits, seed=inner_seed
+    )
+    pig_ids = sorted({sample.pig_id for sample in outer_training_samples})
+    validate_fold_assignments(assignments, pig_ids, n_splits=len(assignments))
+    return assignments
+
+
+def assert_nested_partition(
+    outer_assignment: FoldAssignment,
+    inner_assignment: FoldAssignment,
+) -> None:
+    """Assert that inner selection uses only pigs from the outer training set."""
+    outer_train = set(outer_assignment.train_pigs)
+    outer_validation = set(outer_assignment.validation_pigs)
+    inner_train = set(inner_assignment.train_pigs)
+    inner_validation = set(inner_assignment.validation_pigs)
+    if inner_train & inner_validation:
+        raise ValueError("Inner training and validation pigs overlap.")
+    if not (inner_train | inner_validation).issubset(outer_train):
+        raise ValueError("An inner split contains pigs outside the outer training set.")
+    if (inner_train | inner_validation) & outer_validation:
+        raise ValueError("Outer validation pigs leaked into inner model selection.")
+
+
 def subset_by_pigs(samples: Sequence[WindowSample], pigs: Iterable[str]) -> list[WindowSample]:
     allowed = set(map(str, pigs))
     return [sample for sample in samples if sample.pig_id in allowed]

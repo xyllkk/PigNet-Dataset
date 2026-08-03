@@ -7,16 +7,14 @@ from pathlib import Path
 from typing import Mapping
 
 from catboost import CatBoostRegressor
-from sklearn.impute import SimpleImputer
-from sklearn.multioutput import MultiOutputRegressor
-from sklearn.pipeline import Pipeline
 
 from pignet_common import SEED
-from tree_model_runner import run_tree_experiment
+from tree_model_runner import IndependentMultiOutputRegressor, run_tree_experiment
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_PATH = ROOT / "data" / "main_cohort"
-OUTPUT_DIR = ROOT / "results" / "CatBoost_10_fold_CV_win14"
+OUTPUT_DIR = ROOT / "results" / "CatBoost_nested_10_fold_CV_win14"
+CANONICAL_FOLD_MANIFEST = ROOT / "results" / "canonical_outer_folds_W14_H7_seed42.json"
 
 PARAMETER_GRID = {
     "iterations": [800, 1000, 1200],
@@ -30,7 +28,7 @@ PARAMETER_GRID = {
 EXPECTED_GRID_SIZE = 288
 
 
-def build_estimator(parameters: Mapping[str, object]) -> MultiOutputRegressor:
+def build_estimator(parameters: Mapping[str, object]) -> IndependentMultiOutputRegressor:
     regressor = CatBoostRegressor(
         loss_function="RMSE",
         random_seed=SEED,
@@ -40,13 +38,7 @@ def build_estimator(parameters: Mapping[str, object]) -> MultiOutputRegressor:
         thread_count=-1,
         **dict(parameters),
     )
-    pipeline = Pipeline(
-        [
-            ("imputer", SimpleImputer(strategy="mean")),
-            ("regressor", regressor),
-        ]
-    )
-    return MultiOutputRegressor(pipeline, n_jobs=1)
+    return IndependentMultiOutputRegressor(regressor)
 
 
 def main() -> None:
@@ -54,6 +46,7 @@ def main() -> None:
         model_name="CatBoost",
         data_path=DATA_PATH,
         output_dir=OUTPUT_DIR,
+        canonical_manifest_path=CANONICAL_FOLD_MANIFEST,
         parameter_grid=PARAMETER_GRID,
         estimator_builder=build_estimator,
         expected_grid_size=EXPECTED_GRID_SIZE,

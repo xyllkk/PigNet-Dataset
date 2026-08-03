@@ -7,16 +7,14 @@ from pathlib import Path
 from typing import Mapping
 
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.impute import SimpleImputer
-from sklearn.multioutput import MultiOutputRegressor
-from sklearn.pipeline import Pipeline
 
 from pignet_common import SEED
-from tree_model_runner import run_tree_experiment
+from tree_model_runner import IndependentMultiOutputRegressor, run_tree_experiment
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_PATH = ROOT / "data" / "main_cohort"
-OUTPUT_DIR = ROOT / "results" / "RandomForest_10_fold_CV_win14"
+OUTPUT_DIR = ROOT / "results" / "RandomForest_nested_10_fold_CV_win14"
+CANONICAL_FOLD_MANIFEST = ROOT / "results" / "canonical_outer_folds_W14_H7_seed42.json"
 
 PARAMETER_GRID = {
     "n_estimators": [800, 1000, 1200],
@@ -28,7 +26,7 @@ PARAMETER_GRID = {
 EXPECTED_GRID_SIZE = 72
 
 
-def build_estimator(parameters: Mapping[str, object]) -> MultiOutputRegressor:
+def build_estimator(parameters: Mapping[str, object]) -> IndependentMultiOutputRegressor:
     regressor = RandomForestRegressor(
         random_state=SEED,
         n_jobs=-1,
@@ -36,13 +34,7 @@ def build_estimator(parameters: Mapping[str, object]) -> MultiOutputRegressor:
         oob_score=False,
         **dict(parameters),
     )
-    pipeline = Pipeline(
-        [
-            ("imputer", SimpleImputer(strategy="mean")),
-            ("regressor", regressor),
-        ]
-    )
-    return MultiOutputRegressor(pipeline, n_jobs=1)
+    return IndependentMultiOutputRegressor(regressor)
 
 
 def main() -> None:
@@ -50,6 +42,7 @@ def main() -> None:
         model_name="RandomForest",
         data_path=DATA_PATH,
         output_dir=OUTPUT_DIR,
+        canonical_manifest_path=CANONICAL_FOLD_MANIFEST,
         parameter_grid=PARAMETER_GRID,
         estimator_builder=build_estimator,
         expected_grid_size=EXPECTED_GRID_SIZE,
