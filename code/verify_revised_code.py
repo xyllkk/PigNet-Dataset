@@ -28,6 +28,7 @@ from pignet_common import (  # noqa: E402
     FoldAssignment,
     WindowSample,
     assert_nested_partition,
+    build_window_samples,
     load_or_create_fold_manifest,
     make_inner_folds,
     make_pig_folds,
@@ -164,6 +165,41 @@ def check_outer_and_inner_partitions() -> None:
             assert_nested_partition(outer, inner)
 
 
+def check_calendar_continuity() -> None:
+    dates = pd.date_range("2025-01-01", periods=21, freq="D")
+    frame = pd.DataFrame(
+        {
+            "日期": dates,
+            "耳缺号": "P001",
+            "体重": np.linspace(40.0, 44.0, len(dates)),
+            "breed": "Duroc",
+            "station": "S1",
+            "feature": np.arange(len(dates), dtype=float),
+        }
+    )
+    samples = build_window_samples(
+        frame,
+        feature_columns=["feature"],
+        breed_col="breed",
+        station_col="station",
+    )
+    if len(samples) != 1:
+        raise RuntimeError("A continuous 21-day interval should yield one sample.")
+
+    frame.loc[10:, "日期"] = frame.loc[10:, "日期"] + pd.Timedelta(days=1)
+    try:
+        build_window_samples(
+            frame,
+            feature_columns=["feature"],
+            breed_col="breed",
+            station_col="station",
+        )
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError("A calendar gap was incorrectly accepted as continuous.")
+
+
 class TinyForecaster(nn.Module):
     def __init__(self, input_dim: int) -> None:
         super().__init__()
@@ -259,6 +295,7 @@ def main() -> None:
     check_shared_manifest_expression()
     check_grid_sizes()
     check_outer_and_inner_partitions()
+    check_calendar_continuity()
     check_deep_inner_selection()
     check_tree_nested_search()
     check_deep_forward_shapes()

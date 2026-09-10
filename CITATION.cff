@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this repository, please cite the associated PigNet manuscript."
+type: software
+title: "PigNet: Short-term individual pig body-weight forecasting using multi-source data without continuous historical body-weight inputs"
+authors:
+  - family-names: Xu
+    given-names: Yifei
+  - family-names: Li
+    given-names: Xiaomeng
+  - family-names: Yang
+    given-names: Ying
+  - family-names: Li
+    given-names: Xiaocheng
+  - family-names: Lin
+    given-names: Taiming
+  - family-names: Wu
+    given-names: Zhenlong
+repository-code: "https://github.com/xyllkk/PigNet-Dataset"

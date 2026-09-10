@@ -237,6 +237,16 @@ def build_window_samples(
         features = group[list(feature_columns)].apply(pd.to_numeric, errors="coerce")
 
         for endpoint in range(window - 1, len(group) - horizon):
+            interval_dates = group[DATE_COL].iloc[
+                endpoint - window + 1 : endpoint + horizon + 1
+            ]
+            day_steps = np.diff(
+                interval_dates.dt.normalize().to_numpy(dtype="datetime64[D]")
+            )
+            if len(interval_dates) != window + horizon or not np.all(
+                day_steps == np.timedelta64(1, "D")
+            ):
+                continue
             target = group[WEIGHT_COL].iloc[endpoint + 1 : endpoint + horizon + 1]
             if len(target) != horizon or target.isna().any():
                 continue

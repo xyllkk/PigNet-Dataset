@@ -1,0 +1,4 @@
+model,RMSE_kg,R2,comparison,exact_two_sided_Wilcoxon_p,multiple_comparison_correction
+PigNet,2.28,0.958,PigNet versus TimesNet,0.03711,none
+TimesNet,2.62,0.944,,,
+LSTM,3.21,0.919,,,
