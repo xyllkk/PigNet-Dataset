@@ -59,8 +59,9 @@ across the seven horizons within pig, and then macro-averaged across pigs. See
 | TimesNet | 2.62 | 0.944 |
 | LSTM | 3.21 | 0.919 |
 
-PigNet reduced RMSE by approximately 13.0% relative to TimesNet. The prespecified
-exact two-sided Wilcoxon signed-rank comparison gave *p* = 0.03711 (reported as
+PigNet reduced RMSE by approximately 13.0% relative to TimesNet. Exact two-sided
+Wilcoxon signed-rank tests were applied to paired outer-fold RMSE values. The exact
+two-sided Wilcoxon signed-rank comparison gave *p* = 0.03711 (reported as
 0.037); no multiple-comparison correction was applied. Values are also recorded
 in [`results/reference_metrics/main_results.csv`](results/reference_metrics/main_results.csv).
 

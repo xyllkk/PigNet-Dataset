@@ -89,10 +89,12 @@ No multiple-comparison correction was applied.
 
 ## Independent-cohort protocol
 
-The target cohort contains 33 retained Duroc pigs. Each repeated split uses 3
-pigs (10%) for fine-tuning and 30 pigs (90%) for testing. Splitting is performed
-at pig level with breed stratification. The test pigs do not provide validation
-signals and do not influence training duration.
+The target cohort contains 33 retained Duroc pigs. Each repeated split uses 3 of 33
+pigs (9.1%) for fine-tuning and 30 of 33 pigs (90.9%) for testing. The historical
+splitter included breed-stratification logic. Because all 33 pigs in the target
+cohort were Duroc, this was equivalent to pig-level random sampling in the
+independent-cohort evaluation. The test pigs do not provide validation signals
+and do not influence training duration.
 
 All model parameters are updated for 120 epochs using Adam, learning rate 3e-4,
 weight decay 3e-4, and batch size 128. There is no target-domain validation and
