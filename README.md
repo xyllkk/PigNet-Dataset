@@ -171,5 +171,13 @@ Citation metadata and the confirmed manuscript author list are provided in
 
 ## License
 
-No software or data license has yet been specified for this repository. No
-license was inferred or added during repository preparation.
+The source code in this repository is licensed under the MIT License. See
+[`LICENSE`](LICENSE).
+
+Unless otherwise stated, the datasets, model weights, documentation, and
+research result files are licensed under the Creative Commons Attribution 4.0
+International (CC BY 4.0) License. See [`LICENSE-DATA`](LICENSE-DATA).
+
+If you use PigNet, the released datasets, or model weights in academic work,
+please cite the associated paper and this repository. Citation metadata are
+provided in [`CITATION.cff`](CITATION.cff).
