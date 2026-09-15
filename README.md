@@ -15,7 +15,7 @@ manuscript-aligned reference results.
 |---|---|
 | `code/` | PigNet, neural baselines, tree baselines, shared evaluation code, and verification utilities |
 | `code/independent_cohort/` | Executable PigNet, TimesNet, and LSTM target-cohort adaptation pipelines |
-| `code/analysis/` | Supplementary QC sensitivity summarization |
+| `code/analysis/` | QC sensitivity, SHAP, and production-analysis utilities |
 | `data/` | Main and independent cohorts; see [`data/README.md`](data/README.md) |
 | `weights/` | Source-domain checkpoints used for independent-cohort adaptation |
 | `results/reference_metrics/` | Final compact benchmark, QC, and split records |
@@ -47,8 +47,9 @@ is likewise restricted to outer-training pigs. Outer-validation pigs are used
 once for final evaluation. Missing predictors and standardization parameters are
 estimated from the applicable training partition only.
 
-Per-pig RMSE and R² are calculated separately at each forecast horizon, averaged
-across the seven horizons within pig, and then macro-averaged across pigs. See
+Per-pig RMSE is averaged across all seven forecast horizons. Pig-level R² is
+averaged only across horizons for which R² is defined, and fold-level R² is then
+macro-averaged across pigs with defined pig-level values. See
 [`docs/reproducibility.md`](docs/reproducibility.md) for the complete procedure.
 
 ## Main results
@@ -60,9 +61,9 @@ across the seven horizons within pig, and then macro-averaged across pigs. See
 | LSTM | 3.21 | 0.919 |
 
 PigNet reduced RMSE by approximately 13.0% relative to TimesNet. Exact two-sided
-Wilcoxon signed-rank tests were applied to paired outer-fold RMSE values. The exact
-two-sided Wilcoxon signed-rank comparison gave *p* = 0.03711 (reported as
-0.037); no multiple-comparison correction was applied. Values are also recorded
+Wilcoxon signed-rank tests were applied to paired outer-fold RMSE values; the
+PigNet–TimesNet comparison yielded *p* = 0.03711 (reported as 0.037), with no
+multiple-comparison correction. Values are also recorded
 in [`results/reference_metrics/main_results.csv`](results/reference_metrics/main_results.csv).
 
 ## Independent-cohort evaluation
@@ -109,6 +110,38 @@ Add `--verify-only` to an independent-cohort command to check checkpoint
 compatibility and print all split assignments without training or writing
 results. Use `--help` for path and device options.
 
+## Reproducing manuscript analyses
+
+The historical tree-model feature analysis is available without retraining when
+the corresponding serialized outer-fold estimators and validation-window table
+are supplied:
+
+```bash
+python code/analysis/shap_feature_importance.py --data VALIDATION.csv --model-dir TREE_MODELS --output-dir shap_results
+```
+
+It uses `shap.TreeExplainer`, pig-balanced validation subsampling (at most 20
+windows per pig, seed 42), lag-family summation, horizon summation, and fold
+mean ± SEM. The trained tree estimators are not bundled in this repository.
+Provide one MultiOutputRegressor-compatible joblib/pickle per model and outer
+fold (for example, `RF_fold01.joblib`).
+
+Production-oriented metrics are computed from saved out-of-fold predictions:
+
+```bash
+python code/analysis/production_evaluation.py --predictions PREDICTIONS.xlsx --output-dir production_results
+```
+
+Window screening can be finalized from a saved inner-validation ranking table
+without retraining:
+
+```bash
+python code/analysis/window_selection.py --metrics WINDOW_RANKING.csv --output window_selection.csv
+```
+
+No historical input-availability implementation was recoverable, so no
+corresponding entry point is advertised here.
+
 ## QC sensitivity analysis
 
 The supplementary QC analysis compares QC-REF, QC-STRICT, QC-RELAXED, and
@@ -123,6 +156,9 @@ summary from four fold-level CSV files.
 Python package versions used by the public scripts are pinned in
 [`requirements.txt`](requirements.txt). CUDA is optional; PyTorch automatically
 uses CPU when CUDA is unavailable.
+
+The exact historical SHAP package version was not retained; the public SHAP
+entry point uses the pinned compatible version listed in `requirements.txt`.
 
 ## Citation
 

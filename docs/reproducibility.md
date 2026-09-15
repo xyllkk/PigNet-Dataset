@@ -71,9 +71,10 @@ higher-order difference penalty.
 ## Metrics and statistical comparison
 
 For each pig, RMSE and R² are computed separately for forecast horizons 1–7.
-The seven horizon values are averaged within pig; pig-level values are then
-macro-averaged within each outer fold. Fold-level values support stability and
-paired comparisons.
+Per-pig RMSE is averaged across all seven forecast horizons. Pig-level R² is
+averaged only across horizons for which R² is defined, and fold-level R² is then
+macro-averaged across pigs with defined pig-level values. Fold-level values
+support stability and paired comparisons.
 
 Final main-cohort reference values are:
 
@@ -86,6 +87,46 @@ Final main-cohort reference values are:
 PigNet's RMSE reduction relative to TimesNet is approximately 13.0%. The exact
 two-sided Wilcoxon signed-rank result is *p* = 0.03711 (displayed as 0.037).
 No multiple-comparison correction was applied.
+
+## Manuscript analysis reproduction
+
+### SHAP feature importance
+
+The historical tree-model analysis uses `shap.TreeExplainer` for RF, XGBoost,
+LightGBM, and CatBoost. Each outer fold explains seven independently fitted
+horizon estimators on validation windows sampled in a pig-balanced manner (at
+most 20 windows per pig, sampling seed 42). For each lagged feature, the
+per-window absolute SHAP values are averaged; suffixes `_lag1` through `_lag14`
+are then mapped to the original variable family and summed. Initial body weight
+is a single static feature and is not lag-expanded. Family values are summed
+across horizons within each fold, and Fig. 11 reports the mean and SEM across
+the ten outer-fold totals. The public entry point is
+`code/analysis/shap_feature_importance.py`; it requires the serialized
+outer-fold tree estimators and validation-window table, which are not bundled.
+Because neither the historical SHAP aggregation workbook nor those serialized
+tree estimators is public, this repository does not claim a numerical reprint
+of Fig. 11.
+The exact historical SHAP package version was not retained; the public script
+uses the compatible version pinned in `requirements.txt`.
+
+### Production-oriented evaluation
+
+`code/analysis/production_evaluation.py` consumes saved out-of-fold rolling
+predictions and computes the operational metrics without fitting models. For
+each outer fold, rolling pooled RMSE pools all retained test-pig window-horizon
+points and is then averaged arithmetically across folds. Milestone events are
+defined as any observed or predicted value reaching 90 or 100 kg within the
+seven-day horizon; crossing-day MAE is calculated only for paired-positive
+windows. Growth-rate metrics fit ordinary least-squares body-weight slopes
+against relative day (`Window + Horizon`) for each pig, then report fold-level
+MAE/RMSE and pooled Spearman correlation across pig trajectories.
+
+The historical window-screening workflow evaluated W=7--21 using validation
+data from outer-training pigs and selected W=14. The public
+`code/analysis/window_selection.py` utility finalizes that choice from a saved
+inner-validation ranking table; it does not retrain the candidate windows.
+No recoverable historical implementation was found for the input-availability
+analysis, so no public entry point is advertised for that analysis.
 
 ## Independent-cohort protocol
 
