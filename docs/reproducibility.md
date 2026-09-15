@@ -84,9 +84,17 @@ Final main-cohort reference values are:
 | TimesNet | 2.62 | 0.944 |
 | LSTM | 3.21 | 0.919 |
 
-PigNet's RMSE reduction relative to TimesNet is approximately 13.0%. The exact
-two-sided Wilcoxon signed-rank result is *p* = 0.03711 (displayed as 0.037).
-No multiple-comparison correction was applied.
+PigNet reduced RMSE by 13.0% relative to TimesNet (2.28 vs. 2.62 kg), and the
+fold-level difference remained significant after Benjamini-Hochberg
+multiple-comparison correction (BH-adjusted *p* = 0.037109; reported as 0.037
+in the manuscript). Pairwise differences in fold-level overall RMSE between
+PigNet and each baseline were assessed using two-sided exact Wilcoxon
+signed-rank tests. Because seven PigNet-versus-baseline comparisons were
+performed, *p*-values were adjusted using the Benjamini-Hochberg procedure to
+control the false discovery rate. Statistical significance was defined as a
+BH-adjusted *p*-value < 0.05.
+The seven comparison-level values are recorded in
+`results/reference_metrics/multiple_comparison_results.csv`.
 
 ## Manuscript analysis reproduction
 
@@ -107,7 +115,9 @@ tree estimators and a validation-window table.
 ### Production-oriented evaluation
 
 `code/analysis/production_evaluation.py` consumes saved out-of-fold rolling
-predictions and computes the operational metrics without fitting models. For
+predictions in either the canonical `Window_predictions` format or the model
+runner `Predictions` format and computes the operational metrics without fitting
+models. For
 each outer fold, rolling pooled RMSE pools all retained test-pig window-horizon
 points and is then averaged arithmetically across folds. Milestone events are
 defined as any observed or predicted value reaching 90 or 100 kg within the
@@ -115,6 +125,11 @@ seven-day horizon; crossing-day MAE is calculated only for paired-positive
 windows. Growth-rate metrics fit ordinary least-squares body-weight slopes
 against relative day (`Window + Horizon`) for each pig, then report fold-level
 MAE/RMSE and pooled Spearman correlation across pig trajectories.
+
+For model-runner `Predictions` tables, pass `--model-name MODEL` when the input
+does not contain a `Model` column. The evaluator retains only held-out sets
+(`outer_validation`, `outer_test`, or `test`) and reconstructs rolling-window
+positions from `target_date` and `horizon`.
 
 The window-screening workflow evaluates W=7--21 using validation
 data from outer-training pigs and selected W=14. The public

@@ -1,4 +1,4 @@
-model,RMSE_kg,R2,comparison,exact_two_sided_Wilcoxon_p,multiple_comparison_correction
-PigNet,2.28,0.958,PigNet versus TimesNet,0.03711,none
-TimesNet,2.62,0.944,,,
-LSTM,3.21,0.919,,,
+model,RMSE_kg,R2,comparison,exact_two_sided_Wilcoxon_p,multiple_comparison_correction,multiple_comparison_method,multiple_comparison_family,bh_adjusted_p,significance_threshold
+PigNet,2.28,0.958,PigNet versus TimesNet,0.037109,Benjamini-Hochberg,Benjamini-Hochberg,7 PigNet-versus-baseline comparisons,0.037109,BH-adjusted p < 0.05
+TimesNet,2.62,0.944,PigNet versus TimesNet,0.037109,Benjamini-Hochberg,Benjamini-Hochberg,7 PigNet-versus-baseline comparisons,0.037109,BH-adjusted p < 0.05
+LSTM,3.21,0.919,,,Benjamini-Hochberg,Benjamini-Hochberg,7 PigNet-versus-baseline comparisons,,BH-adjusted p < 0.05

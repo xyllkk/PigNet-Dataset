@@ -1,0 +1,8 @@
+comparison,raw_p,bh_adjusted_p,significant_0_05
+RF_vs_PigNet,0.001953,0.004557,YES
+XGBoost_vs_PigNet,0.001953,0.004557,YES
+LightGBM_vs_PigNet,0.009766,0.017090,YES
+CatBoost_vs_PigNet,0.013672,0.019141,YES
+LSTM_vs_PigNet,0.001953,0.004557,YES
+LightTS_vs_PigNet,0.027344,0.031901,YES
+TimesNet_vs_PigNet,0.037109,0.037109,YES

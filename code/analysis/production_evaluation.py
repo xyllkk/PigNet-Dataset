@@ -23,23 +23,163 @@ REQUIRED_COLUMNS = {
     "Observed_BW",
     "Predicted_BW",
 }
+RUNNER_COLUMNS = {
+    "fold",
+    "set",
+    "pig_id",
+    "horizon",
+    "target_date",
+    "observed",
+    "predicted",
+}
+HELD_OUT_SET_VALUES = frozenset({"outer_validation", "outer_test", "test"})
+KNOWN_NON_HELD_OUT_SET_VALUES = frozenset(
+    {"inner_validation", "validation", "fine_tune", "train"}
+)
 THRESHOLDS = (90.0, 100.0)
 
 
-def read_predictions(path: Path, sheet: str) -> pd.DataFrame:
-    """Read a prediction table from CSV or Excel."""
+def _normalise_horizon(values: pd.Series, column: str) -> pd.Series:
+    """Return integer forecast horizons and reject malformed values."""
+    numeric = pd.to_numeric(values, errors="raise")
+    if numeric.isna().any() or (~np.isfinite(numeric)).any():
+        raise ValueError(f"{column} contains missing or non-finite values.")
+    if not np.equal(numeric, np.floor(numeric)).all():
+        raise ValueError(f"{column} must contain integer horizons.")
+    horizon = numeric.astype(int)
+    if not horizon.between(1, 7).all():
+        raise ValueError(f"{column} must be in the range 1--7.")
+    return horizon
+
+
+def _validate_canonical_predictions(frame: pd.DataFrame) -> pd.DataFrame:
+    """Validate the legacy canonical schema without changing its semantics."""
+    missing = sorted(REQUIRED_COLUMNS.difference(frame.columns))
+    if missing:
+        raise ValueError(f"Prediction table is missing columns: {missing}")
+    out = frame.copy()
+    for column in ("Model", "Fold", "Pig"):
+        if out[column].isna().any() or out[column].astype(str).str.strip().eq("").any():
+            raise ValueError(f"{column} must not be empty.")
+    out["Horizon"] = _normalise_horizon(out["Horizon"], "Horizon")
+    for column in ("Observed_BW", "Predicted_BW"):
+        out[column] = pd.to_numeric(out[column], errors="raise")
+        if out[column].isna().any() or (~np.isfinite(out[column])).any():
+            raise ValueError(f"{column} contains missing or non-finite values.")
+    return out
+
+
+def _normalise_runner_predictions(
+    frame: pd.DataFrame, model_name: str | None
+) -> pd.DataFrame:
+    """Map a model-runner ``Predictions`` table to the canonical schema."""
+    missing = sorted(RUNNER_COLUMNS.difference(frame.columns))
+    if missing:
+        raise ValueError(f"Model-runner prediction table is missing columns: {missing}")
+    if "Model" in frame.columns:
+        models = frame["Model"].copy()
+    elif model_name is not None and str(model_name).strip():
+        models = pd.Series(str(model_name).strip(), index=frame.index)
+    else:
+        raise ValueError(
+            "The Predictions schema has no Model column; provide --model-name."
+        )
+
+    out = pd.DataFrame(index=frame.index)
+    out["Model"] = models
+    if out["Model"].isna().any() or out["Model"].astype(str).str.strip().eq("").any():
+        raise ValueError("Model must not be empty.")
+    out["Fold"] = frame["fold"]
+    out["Pig"] = frame["pig_id"]
+    out["Horizon"] = _normalise_horizon(frame["horizon"], "horizon")
+    out["Observed_BW"] = pd.to_numeric(frame["observed"], errors="raise")
+    out["Predicted_BW"] = pd.to_numeric(frame["predicted"], errors="raise")
+    for column in ("Observed_BW", "Predicted_BW"):
+        if out[column].isna().any() or (~np.isfinite(out[column])).any():
+            raise ValueError(f"{column} contains missing or non-finite values.")
+    if out["Fold"].isna().any() or out["Pig"].isna().any():
+        raise ValueError("Fold and Pig must not be empty.")
+
+    set_values = frame["set"].astype(str).str.strip().str.casefold()
+    known_values = HELD_OUT_SET_VALUES | KNOWN_NON_HELD_OUT_SET_VALUES
+    unexpected = sorted(set(set_values.dropna()) - known_values)
+    if unexpected:
+        raise ValueError(
+            "Unexpected set values; expected held-out or known training values, "
+            f"received {unexpected}."
+        )
+    held_out = set_values.isin(HELD_OUT_SET_VALUES)
+    if not held_out.any():
+        raise ValueError(
+            "No held-out predictions found. Expected set values: "
+            f"{sorted(HELD_OUT_SET_VALUES)}; received {sorted(set(set_values))}."
+        )
+    out = out.loc[held_out].copy()
+
+    target_dates = pd.to_datetime(frame.loc[held_out, "target_date"], errors="raise")
+    if target_dates.isna().any():
+        raise ValueError("target_date contains missing or unparseable values.")
+    forecast_origins = target_dates - pd.to_timedelta(out["Horizon"] - 1, unit="D")
+    out["target_date"] = target_dates
+    out["forecast_origin_date"] = forecast_origins
+    group_keys = ["Model", "Fold", "Pig"]
+    first_origin = out.groupby(group_keys, sort=False)["forecast_origin_date"].transform("min")
+    out["Window"] = (out["forecast_origin_date"] - first_origin).dt.days + 1
+    out["Window"] = out["Window"].astype(int)
+
+    duplicate_keys = ["Model", "Fold", "Pig", "Window", "Horizon"]
+    if out.duplicated(duplicate_keys).any():
+        raise ValueError(
+            "A reconstructed window contains more than one row for a horizon: "
+            f"{duplicate_keys}."
+        )
+    return out.reset_index(drop=True)
+
+
+def normalize_prediction_schema(
+    frame: pd.DataFrame, model_name: str | None = None
+) -> pd.DataFrame:
+    """Normalize canonical or model-runner predictions to one schema."""
+    if REQUIRED_COLUMNS.issubset(frame.columns):
+        return _validate_canonical_predictions(frame)
+    if RUNNER_COLUMNS.issubset(frame.columns):
+        return _normalise_runner_predictions(frame, model_name=model_name)
+    raise ValueError(
+        "Unsupported prediction schema. Expected canonical columns "
+        f"{sorted(REQUIRED_COLUMNS)} or model-runner columns {sorted(RUNNER_COLUMNS)}."
+    )
+
+
+def read_predictions(
+    path: Path, sheet: str | None = None, model_name: str | None = None
+) -> pd.DataFrame:
+    """Read and normalize a prediction table from CSV or Excel."""
     if not path.exists():
         raise FileNotFoundError(path)
     if path.suffix.lower() == ".csv":
         frame = pd.read_csv(path)
     elif path.suffix.lower() in {".xlsx", ".xls"}:
-        frame = pd.read_excel(path, sheet_name=sheet)
+        workbook = pd.ExcelFile(path)
+        if sheet is None:
+            candidates = [
+                name
+                for name in ("Window_predictions", "Predictions")
+                if name in workbook.sheet_names
+            ]
+            if not candidates:
+                raise ValueError(
+                    "Workbook contains neither 'Window_predictions' nor 'Predictions'. "
+                    f"Available sheets: {workbook.sheet_names}"
+                )
+            sheet = candidates[0]
+        elif sheet not in workbook.sheet_names:
+            raise ValueError(
+                f"Sheet {sheet!r} was not found. Available sheets: {workbook.sheet_names}"
+            )
+        frame = pd.read_excel(workbook, sheet_name=sheet)
     else:
         raise ValueError(f"Unsupported prediction format: {path.suffix}")
-    missing = sorted(REQUIRED_COLUMNS.difference(frame.columns))
-    if missing:
-        raise ValueError(f"Prediction table is missing columns: {missing}")
-    return frame
+    return normalize_prediction_schema(frame, model_name=model_name)
 
 
 def pooled_rmse(predictions: pd.DataFrame) -> pd.DataFrame:
@@ -161,7 +301,7 @@ def trajectory_growth(predictions: pd.DataFrame) -> pd.DataFrame:
 
 def run(args: argparse.Namespace) -> None:
     """Compute and write operational metric summaries."""
-    predictions = read_predictions(args.predictions, args.sheet)
+    predictions = read_predictions(args.predictions, args.sheet, model_name=args.model_name)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     pooled_rmse(predictions).to_csv(args.output_dir / "rolling_pooled_rmse.csv", index=False)
     milestone_metrics(predictions).to_csv(args.output_dir / "milestone_metrics.csv", index=False)
@@ -173,7 +313,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--predictions", type=Path, required=True, help="Saved out-of-fold prediction CSV/XLSX.")
     parser.add_argument("--output-dir", type=Path, required=True, help="Directory for metric summaries.")
-    parser.add_argument("--sheet", default="Window_predictions", help="Excel sheet containing prediction rows.")
+    parser.add_argument(
+        "--sheet",
+        default=None,
+        help="Excel sheet containing prediction rows (default: Window_predictions, then Predictions).",
+    )
+    parser.add_argument(
+        "--model-name",
+        default=None,
+        help="Model label required for model-runner Predictions tables without a Model column.",
+    )
     return parser
 
 
